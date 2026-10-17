@@ -1,7 +1,6 @@
-local Class = require("lib.hump").class
 local eventos = require("lib.eventos")
 
-local Enemigo = Class{}
+local Enemigo = {}
 
 function Enemigo:init(x, y, config)
     self.x = x
@@ -14,10 +13,6 @@ function Enemigo:init(x, y, config)
     self.origen_x = config.origen_x or self.ancho / 2
     self.origen_y = config.origen_y or self.alto / 2
     self.activo = true
-end
-
-function Enemigo:update(dt, jugador)
-    error("El método 'update' debe ser implementado por la subclase")
 end
 
 function Enemigo:recibirDano(cantidad)
