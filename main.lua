@@ -4,8 +4,8 @@ local UI = require("src.ui")
 local Jefe = require("src.jefe")
 local Jugador = require("src.jugador")
 local Zombie = require("src.zombie")
+local Item = require("src.item") -- IMPORTAMOS EL NUEVO MÓDULO
 
--- Carga defensiva de imágenes
 local function cargarImagen(ruta, r, g, b, w, h)
     if love.filesystem.getInfo(ruta) then return love.graphics.newImage(ruta) end
     w, h = w or 32, h or 32
@@ -19,7 +19,6 @@ local function cargarImagen(ruta, r, g, b, w, h)
     return canvas
 end
 
--- Carga defensiva de sonidos
 local function cargarSonido(ruta, tipo)
     tipo = tipo or "static"
     if love.filesystem.getInfo(ruta) then
@@ -32,8 +31,6 @@ end
 local imgJugador = cargarImagen("assets/jugador.png", 0.2, 0.8, 1.0, 32, 48)
 local imgZombie  = cargarImagen("assets/zombie.png", 0.2, 0.8, 0.2, 32, 48)
 
--- ATENCIÓN ACÁ: Como vimos en tu captura, estos archivos están en la RAÍZ del proyecto.
--- Si los movés a la carpeta assets, ponele "assets/" adelante.
 local sfxDisparo = cargarSonido("Explosion.wav") 
 local sfxEspada  = cargarSonido("espada.wav")
 local sfxVictoria = cargarSonido("Efecto de sonido de trompetas HD.wav")
@@ -43,9 +40,17 @@ local juego = {
     ui = UI(),
     jugador = nil,
     enemigos = {},
+    items = {},
     jefe = nil,
     nivelActual = 1
 }
+
+eventos.suscribirse("jefe_invoca_zombie", function(datos)
+    if juego.jugador then
+        local z = Zombie(datos.x, datos.y, { velocidad = 40, sprite = imgZombie })
+        table.insert(juego.enemigos, z)
+    end
+end)
 
 function juego:iniciarNivel(num)
     self.nivelActual = num
@@ -58,6 +63,8 @@ function juego:iniciarNivel(num)
     self.jugador.sprite = imgJugador
     
     self.enemigos = {}
+    self.items = {}
+    
     self.spawnTimer = 0
     self.spawnInterval = 1 
     self.extraEnemiesSpawned = 0
@@ -65,13 +72,15 @@ function juego:iniciarNivel(num)
     self.velEnemigo = config.velEnemigo
     
     if config.jefe then
-        self.jefe = Jefe(400, 100)
+        self.jefe = Jefe(love.graphics.getWidth()/2 - 50, 50, imgZombie)
         self.jugador.objetivo = 0
     else
         self.jefe = nil
+        for i = 1, 5 do self:crearEnemigo() end
     end
     
-    for i = 1, 5 do self:crearEnemigo() end
+    -- Hacemos aparecer 3 botiquines random al empezar
+    for i = 1, 3 do self:crearItem() end
     
     eventos.emitir("puntos_cambiados", { puntos = 0, objetivo = self.jugador.objetivo })
     eventos.emitir("vida_cambiada", { vidas = self.jugador.vida })
@@ -81,17 +90,23 @@ function juego:reiniciar()
     eventos.limpiar()
     self.jugador = nil
     self.enemigos = {}
+    self.items = {}
     self.jefe = nil
     self.ui.pantalla = "menu"
 end
 
-function juego:crearEnemigo()
-    local z = Zombie(math.random(50, love.graphics.getWidth() - 50), 
-                     math.random(50, love.graphics.getHeight() - 200), { 
-                         velocidad = self.velEnemigo,
-                         sprite = imgZombie
-                     })
+function juego:crearEnemigo(x, y)
+    x = x or math.random(50, love.graphics.getWidth() - 50)
+    y = y or math.random(50, love.graphics.getHeight() - 200)
+    local z = Zombie(x, y, { velocidad = self.velEnemigo, sprite = imgZombie })
     table.insert(self.enemigos, z)
+end
+
+-- NUEVO: Función para crear botiquines
+function juego:crearItem()
+    local x = math.random(50, love.graphics.getWidth() - 50)
+    local y = math.random(50, love.graphics.getHeight() - 100)
+    table.insert(self.items, Item(x, y))
 end
 
 function juego:update(dt)
@@ -100,6 +115,7 @@ function juego:update(dt)
     
     if self.jugador then self.jugador:update(dt) end
     
+    -- Colisiones de balas
     if self.jugador then
         for i = #self.jugador.balas, 1, -1 do
             local b = self.jugador.balas[i]
@@ -118,8 +134,8 @@ function juego:update(dt)
                 end
             end
             if not bala_borrada and self.jefe and self.jefe.activo then
-                local dist = math.sqrt((self.jefe.x + 32 - b.x)^2 + (self.jefe.y + 32 - b.y)^2)
-                if dist < 40 + b.radio then
+                local dist = math.sqrt((self.jefe.x + 50 - b.x)^2 + (self.jefe.y + 50 - b.y)^2)
+                if dist < 50 + b.radio then
                     self.jefe:recibirDano(5)
                     table.remove(self.jugador.balas, i)
                     if sfxDisparo then sfxDisparo:clone():play() end
@@ -128,6 +144,7 @@ function juego:update(dt)
         end
     end
     
+    -- Actualizar Enemigos
     for i = #self.enemigos, 1, -1 do
         local e = self.enemigos[i]
         e:update(dt, self.jugador)
@@ -140,14 +157,46 @@ function juego:update(dt)
         end
     end
     
-    if self.jefe then self.jefe:update(dt) end
+    -- Actualizar Items (y recoger)
+    for i = #self.items, 1, -1 do
+        local it = self.items[i]
+        it:update(dt)
+        if self.jugador then
+            local dist = math.sqrt((it.x - self.jugador.x)^2 + (it.y - self.jugador.y)^2)
+            if dist < 30 then
+                -- Recoger vida
+                self.jugador.vida = math.min(self.jugador.vida + 1, self.jugador.vida_max)
+                eventos.emitir("vida_cambiada", { vidas = self.jugador.vida })
+                table.remove(self.items, i)
+            end
+        end
+    end
     
-    if self.extraEnemiesSpawned < self.maxExtra then
-        self.spawnTimer = self.spawnTimer + dt
-        if self.spawnTimer >= self.spawnInterval then
-            self.spawnTimer = 0
-            self:crearEnemigo()
-            self.extraEnemiesSpawned = self.extraEnemiesSpawned + 1
+    -- Actualizar Jefe
+    if self.jefe then 
+        self.jefe:update(dt, self.jugador) 
+        if self.jefe.activo and self.jugador then
+            local dist = math.sqrt((self.jefe.x + 50 - self.jugador.x)^2 + (self.jefe.y + 50 - self.jugador.y)^2)
+            if dist < 50 then
+                self.jugador:recibirDano(2) 
+            end
+        end
+    end
+    
+    -- Spawner
+    if self.nivelActual < 5 then
+        if self.extraEnemiesSpawned < self.maxExtra then
+            self.spawnTimer = self.spawnTimer + dt
+            if self.spawnTimer >= self.spawnInterval then
+                self.spawnTimer = 0
+                self:crearEnemigo()
+                self.extraEnemiesSpawned = self.extraEnemiesSpawned + 1
+                
+                -- 20% de probabilidad de que aparezca un botiquín mientras spawnean zombies
+                if math.random() < 0.2 then
+                    self:crearItem()
+                end
+            end
         end
     end
     
@@ -156,7 +205,7 @@ function juego:update(dt)
         if sfxDerrota then sfxDerrota:clone():play() end
     end
 
-    if self.jugador and self.jugador.objetivo > 0 and self.jugador.derrotados >= self.jugador.objetivo then
+    if self.nivelActual < 5 and self.jugador and self.jugador.objetivo > 0 and self.jugador.derrotados >= self.jugador.objetivo then
         self.ui.pantalla = "victoria"
         if sfxVictoria then sfxVictoria:clone():play() end
     end
@@ -166,6 +215,7 @@ function juego:draw()
     love.graphics.clear(0.08, 0.08, 0.12)
     
     if self.ui.pantalla == "juego" then
+        for _, it in ipairs(self.items) do it:draw() end
         if self.jugador then self.jugador:draw() end
         for _, e in ipairs(self.enemigos) do e:draw() end
         if self.jefe then self.jefe:draw() end
