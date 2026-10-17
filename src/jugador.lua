@@ -12,21 +12,24 @@ function Jugador:init(x, y)
     self.invulnerable = 0
     self.sprite = nil
     
-    -- Habilidades
     self.balas = {}
     self.cooldown_disparo = 0
     self.cooldown_espada = 0
-    self.espada_activa = 0 -- Temporizador para dibujar el espadazo
-    self.escala = 1.5 -- Escala del jugador
+    self.espada_activa = 0
+    
+    -- Efecto de velocidad
+    self.tiempo_velocidad = 0
+    self.mensaje_tiempo = 0
+    self.mensaje_texto = ""
 end
 
 function Jugador:update(dt)
-    -- Cooldowns
     if self.cooldown_disparo > 0 then self.cooldown_disparo = self.cooldown_disparo - dt end
     if self.cooldown_espada > 0 then self.cooldown_espada = self.cooldown_espada - dt end
     if self.espada_activa > 0 then self.espada_activa = self.espada_activa - dt end
+    if self.tiempo_velocidad > 0 then self.tiempo_velocidad = self.tiempo_velocidad - dt end
+    if self.mensaje_tiempo > 0 then self.mensaje_tiempo = self.mensaje_tiempo - dt end
 
-    -- Movimiento
     local dx, dy = 0, 0
     if love.keyboard.isDown("a", "left")  then dx = dx - 1 end
     if love.keyboard.isDown("d", "right") then dx = dx + 1 end
@@ -37,62 +40,53 @@ function Jugador:update(dt)
         local inv = 1 / math.sqrt(2)
         dx, dy = dx * inv, dy * inv
     end
-    self.x = self.x + dx * self.velocidad * dt
-    self.y = self.y + dy * self.velocidad * dt
+    
+    local vel_actual = self.velocidad
+    if self.tiempo_velocidad > 0 then vel_actual = vel_actual * 1.6 end -- 60% más rápido
+    
+    self.x = self.x + dx * vel_actual * dt
+    self.y = self.y + dy * vel_actual * dt
 
-    -- Limitar a la pantalla
     self.x = math.max(self.ancho/2, math.min(love.graphics.getWidth() - self.ancho/2, self.x))
     self.y = math.max(self.alto/2, math.min(love.graphics.getHeight() - self.alto/2, self.y))
 
     if self.invulnerable > 0 then self.invulnerable = self.invulnerable - dt end
 
-    -- Actualizar balas
     for i = #self.balas, 1, -1 do
         local b = self.balas[i]
         b.x = b.x + b.vx * dt
         b.y = b.y + b.vy * dt
         b.vida = b.vida - dt
-        -- Si sale de pantalla o se acaba el tiempo, se borra
         if b.x < 0 or b.x > love.graphics.getWidth() or b.y < 0 or b.y > love.graphics.getHeight() or b.vida <= 0 then
             table.remove(self.balas, i)
         end
     end
 end
 
--- Habilidad E: Disparar Fuego
 function Jugador:dispararFuego()
     if self.cooldown_disparo > 0 then return end
-    self.cooldown_disparo = 0.4 -- Medio segundo de espera
+    self.cooldown_disparo = 0.4
     
-    local dirX, dirY = 0, -1 -- Por defecto dispara hacia arriba (si no se mueve)
-    -- Si se está moviendo, disparamos hacia donde camina
+    local dirX, dirY = 0, -1
     if love.keyboard.isDown("a", "left") then dirX = -1; dirY = 0 end
     if love.keyboard.isDown("d", "right") then dirX = 1; dirY = 0 end
     if love.keyboard.isDown("w", "up") then dirX = 0; dirY = -1 end
     if love.keyboard.isDown("s", "down") then dirX = 0; dirY = 1 end
 
-    table.insert(self.balas, {
-        x = self.x,
-        y = self.y,
-        vx = dirX * 500, -- Velocidad de la bala
-        vy = dirY * 500,
-        vida = 1.5,
-        radio = 8
-    })
+    table.insert(self.balas, { x = self.x, y = self.y, vx = dirX * 500, vy = dirY * 500, vida = 1.5, radio = 8 })
 end
 
--- Habilidad Q: Espadazo (Daño en área)
 function Jugador:espadazo(enemigos, jefe)
     if self.cooldown_espada > 0 then return end
     self.cooldown_espada = 0.8
-    self.espada_activa = 0.2 -- Duración del efecto visual
+    self.espada_activa = 0.2
     
-    local rango = 100 -- Rango del espadazo
+    local rango = 100
     for i = #enemigos, 1, -1 do
         local e = enemigos[i]
         local dist = math.sqrt((e.x - self.x)^2 + (e.y - self.y)^2)
         if dist < rango then
-            e:recibirDano(1) -- El espadazo hace 1 de daño
+            e:recibirDano(1)
             if not e.activo then
                 table.remove(enemigos, i)
                 self.derrotados = self.derrotados + 1
@@ -100,13 +94,30 @@ function Jugador:espadazo(enemigos, jefe)
             end
         end
     end
-
     if jefe and jefe.activo then
-        local dist = math.sqrt((jefe.x - self.x)^2 + (jefe.y - self.y)^2)
-        if dist < rango + 32 then
-            jefe:recibirDano(10) -- El espadazo hace más daño al jefe
-        end
+        local dist = math.sqrt((jefe.x + 50 - self.x)^2 + (jefe.y + 50 - self.y)^2)
+        if dist < rango + 30 then jefe:recibirDano(10) end
     end
+end
+
+-- Función para curarse
+function Jugador:curar()
+    if self.vida < self.vida_max then
+        self.vida = self.vida + 1
+        eventos.emitir("vida_cambiada", { vidas = self.vida })
+        self.mensaje_texto = "¡+1 Vida!"
+        self.mensaje_tiempo = 1.5
+    else
+        self.mensaje_texto = "¡Vida al Máximo!"
+        self.mensaje_tiempo = 1.5
+    end
+end
+
+-- Función para agarrar velocidad
+function Jugador:activarVelocidad()
+    self.tiempo_velocidad = 5.0 -- 5 segundos de velocidad
+    self.mensaje_texto = "¡Velocidad Extra!"
+    self.mensaje_tiempo = 1.5
 end
 
 function Jugador:recibirDano(cantidad)
@@ -118,13 +129,10 @@ function Jugador:recibirDano(cantidad)
 end
 
 function Jugador:draw()
-    -- Efecto de invulnerabilidad (parpadeo)
     if self.invulnerable > 0 and math.floor(self.invulnerable * 10) % 2 == 0 then return end
 
-    -- Dibujar Jugador (con escala)
     if self.sprite then
         local sw, sh = self.sprite:getWidth(), self.sprite:getHeight()
-        -- Escala para que quepa en el hitbox
         local escala = self.alto / sh 
         love.graphics.draw(self.sprite, self.x, self.y, 0, escala, escala, sw/2, sh/2)
     else
@@ -133,21 +141,26 @@ function Jugador:draw()
         love.graphics.setColor(1, 1, 1)
     end
 
-    -- Dibujar Efecto de Espadazo
     if self.espada_activa > 0 then
-        love.graphics.setColor(1, 1, 0, self.espada_activa * 5) -- Amarillo transparente
+        love.graphics.setColor(1, 1, 0, self.espada_activa * 5)
         love.graphics.circle("line", self.x, self.y, 100)
         love.graphics.setColor(1, 1, 1)
     end
 
-    -- Dibujar Balas de Fuego
     for _, b in ipairs(self.balas) do
-        love.graphics.setColor(1, 0.4, 0) -- Naranja
+        love.graphics.setColor(1, 0.4, 0)
         love.graphics.circle("fill", b.x, b.y, b.radio)
-        love.graphics.setColor(1, 1, 0) -- Núcleo amarillo
+        love.graphics.setColor(1, 1, 0)
         love.graphics.circle("fill", b.x, b.y, b.radio * 0.5)
     end
     love.graphics.setColor(1, 1, 1)
+
+    -- Dibujar el mensaje verde flotante (¡+1 Vida!)
+    if self.mensaje_tiempo > 0 then
+        love.graphics.setColor(0.2, 1, 0.2)
+        love.graphics.printf(self.mensaje_texto, self.x - 50, self.y - 60, 100, "center")
+        love.graphics.setColor(1, 1, 1)
+    end
 end
 
 return function(x, y)

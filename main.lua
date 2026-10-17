@@ -4,7 +4,8 @@ local UI = require("src.ui")
 local Jefe = require("src.jefe")
 local Jugador = require("src.jugador")
 local Zombie = require("src.zombie")
-local Item = require("src.item") -- IMPORTAMOS EL NUEVO MÓDULO
+local Item = require("src.item")
+local Obstaculo = require("src.obstaculo") -- NUEVO
 
 local function cargarImagen(ruta, r, g, b, w, h)
     if love.filesystem.getInfo(ruta) then return love.graphics.newImage(ruta) end
@@ -41,6 +42,7 @@ local juego = {
     jugador = nil,
     enemigos = {},
     items = {},
+    obstaculos = {}, -- NUEVO
     jefe = nil,
     nivelActual = 1
 }
@@ -51,6 +53,33 @@ eventos.suscribirse("jefe_invoca_zombie", function(datos)
         table.insert(juego.enemigos, z)
     end
 end)
+
+-- Función auxiliar para crear mapas de obstáculos
+function juego:crearMapa(num)
+    self.obstaculos = {}
+    if num == 1 then
+        -- Nivel 1: Bosque (Rocas verdes)
+        table.insert(self.obstaculos, Obstaculo(200, 200, 60, 60, {0.2, 0.5, 0.2}))
+        table.insert(self.obstaculos, Obstaculo(700, 400, 80, 80, {0.2, 0.5, 0.2}))
+        table.insert(self.obstaculos, Obstaculo(500, 150, 100, 50, {0.2, 0.5, 0.2}))
+    elseif num == 2 then
+        -- Nivel 2: Cementerio (Lápidas grises)
+        for i = 1, 5 do
+            table.insert(self.obstaculos, Obstaculo(math.random(100, 900), math.random(100, 500), 40, 60, {0.5, 0.5, 0.5}))
+        end
+    elseif num == 3 then
+        -- Nivel 3: La Ciudad (Casas marrones)
+        table.insert(self.obstaculos, Obstaculo(150, 150, 150, 150, {0.6, 0.4, 0.2}))
+        table.insert(self.obstaculos, Obstaculo(700, 150, 150, 150, {0.6, 0.4, 0.2}))
+        table.insert(self.obstaculos, Obstaculo(400, 400, 200, 100, {0.6, 0.4, 0.2}))
+    elseif num == 4 then
+        -- Nivel 4: Laboratorio (Máquinas azules)
+        table.insert(self.obstaculos, Obstaculo(100, 300, 100, 100, {0.2, 0.4, 0.8}))
+        table.insert(self.obstaculos, Obstaculo(800, 300, 100, 100, {0.2, 0.4, 0.8}))
+        table.insert(self.obstaculos, Obstaculo(450, 100, 100, 100, {0.2, 0.4, 0.8}))
+    end
+    -- En el nivel 5 no hay obstáculos para pelear libremente con el jefe
+end
 
 function juego:iniciarNivel(num)
     self.nivelActual = num
@@ -64,6 +93,8 @@ function juego:iniciarNivel(num)
     
     self.enemigos = {}
     self.items = {}
+    
+    self:crearMapa(num) -- Creamos las casas/rocas
     
     self.spawnTimer = 0
     self.spawnInterval = 1 
@@ -79,8 +110,8 @@ function juego:iniciarNivel(num)
         for i = 1, 5 do self:crearEnemigo() end
     end
     
-    -- Hacemos aparecer 3 botiquines random al empezar
-    for i = 1, 3 do self:crearItem() end
+    -- 3 botiquines al empezar
+    for i = 1, 3 do self:crearItem("vida") end
     
     eventos.emitir("puntos_cambiados", { puntos = 0, objetivo = self.jugador.objetivo })
     eventos.emitir("vida_cambiada", { vidas = self.jugador.vida })
@@ -91,6 +122,7 @@ function juego:reiniciar()
     self.jugador = nil
     self.enemigos = {}
     self.items = {}
+    self.obstaculos = {}
     self.jefe = nil
     self.ui.pantalla = "menu"
 end
@@ -102,18 +134,50 @@ function juego:crearEnemigo(x, y)
     table.insert(self.enemigos, z)
 end
 
--- NUEVO: Función para crear botiquines
-function juego:crearItem()
-    local x = math.random(50, love.graphics.getWidth() - 50)
-    local y = math.random(50, love.graphics.getHeight() - 100)
-    table.insert(self.items, Item(x, y))
+function juego:crearItem(tipo)
+    local x, y, colision
+    local intentos = 0
+    repeat
+        intentos = intentos + 1
+        x = math.random(50, love.graphics.getWidth() - 50)
+        y = math.random(50, love.graphics.getHeight() - 100)
+        colision = false
+        -- Evitar que el item aparezca dentro de una casa/obstáculo
+        for _, obs in ipairs(self.obstaculos) do
+            if x > obs.x and x < obs.x + obs.ancho and y > obs.y and y < obs.y + obs.alto then
+                colision = true
+                break
+            end
+        end
+    until not colision or intentos > 20
+    
+    table.insert(self.items, Item(x, y, tipo or "vida"))
+end
+
+-- Función para comprobar si una posición choca con un obstáculo
+function juego:chocaConObstaculo(x, y, w, h)
+    for _, obs in ipairs(self.obstaculos) do
+        if x < obs.x + obs.ancho and x + w > obs.x and y < obs.y + obs.alto and y + h > obs.y then
+            return true
+        end
+    end
+    return false
 end
 
 function juego:update(dt)
     self.ui:update(dt)
     if self.ui.pantalla ~= "juego" then return end
     
-    if self.jugador then self.jugador:update(dt) end
+    -- Guardamos posición anterior del jugador para que no atraviese muros
+    if self.jugador then
+        local oldX, oldY = self.jugador.x, self.jugador.y
+        self.jugador:update(dt)
+        -- Si choca contra una casa, lo devolvemos a su posición anterior
+        if self:chocaConObstaculo(self.jugador.x - self.jugador.ancho/2, self.jugador.y - self.jugador.alto/2, self.jugador.ancho, self.jugador.alto) then
+            self.jugador.x = oldX
+            self.jugador.y = oldY
+        end
+    end
     
     -- Colisiones de balas
     if self.jugador then
@@ -147,7 +211,15 @@ function juego:update(dt)
     -- Actualizar Enemigos
     for i = #self.enemigos, 1, -1 do
         local e = self.enemigos[i]
+        local oldEx, oldEy = e.x, e.y
         e:update(dt, self.jugador)
+        
+        -- Hacemos que el zombie tampoco pueda atravesar los muros (para que se queden atascados o rodeen)
+        if self:chocaConObstaculo(e.x - e.ancho/2, e.y - e.alto/2, e.ancho, e.alto) then
+            e.x = oldEx
+            e.y = oldEy
+        end
+
         if self.jugador and e.activo then
             local dist = math.sqrt((e.x - self.jugador.x)^2 + (e.y - self.jugador.y)^2)
             if dist < (e.ancho/2 + self.jugador.ancho/2) then
@@ -157,16 +229,15 @@ function juego:update(dt)
         end
     end
     
-    -- Actualizar Items (y recoger)
+    -- Actualizar Items
     for i = #self.items, 1, -1 do
         local it = self.items[i]
         it:update(dt)
         if self.jugador then
             local dist = math.sqrt((it.x - self.jugador.x)^2 + (it.y - self.jugador.y)^2)
             if dist < 30 then
-                -- Recoger vida
-                self.jugador.vida = math.min(self.jugador.vida + 1, self.jugador.vida_max)
-                eventos.emitir("vida_cambiada", { vidas = self.jugador.vida })
+                if it.tipo == "vida" then self.jugador:curar() 
+                else self.jugador:activarVelocidad() end
                 table.remove(self.items, i)
             end
         end
@@ -183,19 +254,21 @@ function juego:update(dt)
         end
     end
     
-    -- Spawner
+    -- Spawner infinito hasta que mueran los necesarios
     if self.nivelActual < 5 then
-        if self.extraEnemiesSpawned < self.maxExtra then
-            self.spawnTimer = self.spawnTimer + dt
-            if self.spawnTimer >= self.spawnInterval then
-                self.spawnTimer = 0
+        self.spawnTimer = self.spawnTimer + dt
+        if self.spawnTimer >= self.spawnInterval then
+            self.spawnTimer = 0
+            -- Solo spawneamos si no llegamos a la meta de muertos
+            if (self.jugador.derrotados + #self.enemigos) < self.jugador.objetivo then
                 self:crearEnemigo()
-                self.extraEnemiesSpawned = self.extraEnemiesSpawned + 1
-                
-                -- 20% de probabilidad de que aparezca un botiquín mientras spawnean zombies
-                if math.random() < 0.2 then
-                    self:crearItem()
-                end
+            end
+            
+            -- Probabilidad de item de velocidad o vida
+            if math.random() < 0.2 then
+                local tipoItem = "vida"
+                if math.random() < 0.5 then tipoItem = "velocidad" end
+                self:crearItem(tipoItem)
             end
         end
     end
@@ -215,6 +288,9 @@ function juego:draw()
     love.graphics.clear(0.08, 0.08, 0.12)
     
     if self.ui.pantalla == "juego" then
+        -- Dibujamos primero el piso/casas
+        for _, obs in ipairs(self.obstaculos) do obs:draw() end
+        
         for _, it in ipairs(self.items) do it:draw() end
         if self.jugador then self.jugador:draw() end
         for _, e in ipairs(self.enemigos) do e:draw() end

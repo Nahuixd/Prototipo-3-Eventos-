@@ -1,8 +1,9 @@
 local Item = {}
 
-function Item:init(x, y)
+function Item:init(x, y, tipo)
     self.x, self.y = x, y
-    self.ancho, self.alto = 20, 20
+    self.ancho, self.alto = 24, 24
+    self.tipo = tipo or "vida" -- "vida" o "velocidad"
     self.activo = true
     self.tiempo = 0
 end
@@ -13,17 +14,34 @@ end
 
 function Item:draw()
     if not self.activo then return end
-    -- Un cuadradito rojo con una cruz blanca (simulando un botiquín)
     local flote = math.sin(self.tiempo) * 5
-    love.graphics.setColor(0.8, 0.1, 0.1)
-    love.graphics.rectangle("fill", self.x - 10, self.y - 10 + flote, 20, 20)
-    love.graphics.setColor(1, 1, 1)
-    love.graphics.rectangle("fill", self.x - 2, self.y - 6 + flote, 4, 12)
-    love.graphics.rectangle("fill", self.x - 6, self.y - 2 + flote, 12, 4)
+    
+    if self.tipo == "vida" then
+        -- Botiquín rojo con cruz blanca
+        love.graphics.setColor(0.8, 0.1, 0.1)
+        love.graphics.rectangle("fill", self.x - 12, self.y - 12 + flote, 24, 24)
+        love.graphics.setColor(1, 1, 1)
+        love.graphics.rectangle("fill", self.x - 3, self.y - 8 + flote, 6, 16)
+        love.graphics.rectangle("fill", self.x - 8, self.y - 3 + flote, 16, 6)
+    else
+        -- Poción de velocidad (Rayo amarillo)
+        love.graphics.setColor(0.9, 0.8, 0.1)
+        love.graphics.rectangle("fill", self.x - 10, self.y - 12 + flote, 20, 24)
+        love.graphics.setColor(0.1, 0.1, 0.1)
+        -- Un dibujito de rayo
+        love.graphics.polygon("fill", 
+            self.x + 2, self.y - 8 + flote, 
+            self.x - 6, self.y + 2 + flote, 
+            self.x - 1, self.y + 2 + flote, 
+            self.x - 4, self.y + 10 + flote, 
+            self.x + 6, self.y - 2 + flote, 
+            self.x + 1, self.y - 2 + flote
+        )
+    end
 end
 
-return function(x, y)
+return function(x, y, tipo)
     local instancia = setmetatable({}, { __index = Item })
-    instancia:init(x, y)
+    instancia:init(x, y, tipo)
     return instancia
 end
