@@ -1,4 +1,3 @@
--- enemigo.lua: Clase base abstracta (SOLID - OCP, LSP)
 local Class = require("lib.hump").class
 local eventos = require("lib.eventos")
 
@@ -17,7 +16,6 @@ function Enemigo:init(x, y, config)
     self.activo = true
 end
 
--- Método abstracto: cada subclase DEBE implementarlo
 function Enemigo:update(dt, jugador)
     error("El método 'update' debe ser implementado por la subclase")
 end
@@ -31,12 +29,7 @@ function Enemigo:recibirDano(cantidad)
 end
 
 function Enemigo:getHitbox()
-    return {
-        x = self.x - self.origen_x,
-        y = self.y - self.origen_y,
-        ancho = self.ancho,
-        alto = self.alto,
-    }
+    return { x = self.x - self.origen_x, y = self.y - self.origen_y, ancho = self.ancho, alto = self.alto }
 end
 
 function Enemigo:draw()

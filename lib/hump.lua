@@ -1,12 +1,8 @@
--- hump.lua - Implementación mínima de clases OOP para Love2D
--- Basado en la librería hump de Matthias Richter (MIT License)
 local function class(attributes)
     local new_class = {}
     new_class.__index = new_class
     new_class.include = function(self, mixin)
-        for k, v in pairs(mixin) do
-            self[k] = v
-        end
+        for k, v in pairs(mixin) do self[k] = v end
     end
     new_class.extend = function(self, sub_class)
         sub_class = sub_class or {}
@@ -17,13 +13,8 @@ local function class(attributes)
         return sub_class
     end
     if attributes then
-        for k, v in pairs(attributes) do
-            new_class[k] = v
-        end
+        for k, v in pairs(attributes) do new_class[k] = v end
     end
     return new_class
 end
-
-return {
-    class = class,
-}
+return { class = class }

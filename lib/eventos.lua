@@ -1,4 +1,3 @@
--- eventos.lua: Patrón Observer (SOLID - SRP)
 local eventos = {}
 local listeners = {}
 
@@ -9,19 +8,7 @@ end
 
 function eventos.emitir(nombre, datos)
     if listeners[nombre] then
-        for _, f in ipairs(listeners[nombre]) do
-            f(datos or {})
-        end
-    end
-end
-
-function eventos.describir(nombre, funcion)
-    if not listeners[nombre] then return end
-    for i, f in ipairs(listeners[nombre]) do
-        if f == funcion then
-            table.remove(listeners[nombre], i)
-            return
-        end
+        for _, f in ipairs(listeners[nombre]) do f(datos or {}) end
     end
 end
 
