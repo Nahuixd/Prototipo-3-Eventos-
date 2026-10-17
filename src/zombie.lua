@@ -4,8 +4,13 @@ local Zombie = Enemigo:extend()
 
 function Zombie:init(x, y, config)
     Enemigo.init(self, x, y, {
-        ancho = 32, alto = 48, velocidad = config.velocidad or 30,
-        vida = 1, sprite = config.sprite, origen_x = 16, origen_y = 24,
+        ancho = 32, 
+        alto = 48, 
+        velocidad = config.velocidad or 30,
+        vida = 1, 
+        sprite = config.sprite, 
+        origen_x = 16, 
+        origen_y = 24,
     })
     self.tipo = "zombie"
 end

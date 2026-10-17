@@ -1,3 +1,4 @@
+-- lib/eventos.lua
 local eventos = {}
 local listeners = {}
 
